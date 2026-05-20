@@ -1,0 +1,22 @@
+# Raw and processed data are reproducible through scripts and are too large for normal Git.
+dataset/
+
+# Training artifacts.
+runs/
+results/
+docs/
+*.pt
+*.pth
+*.npz
+test_predictions.npz
+*.png
+*.docx
+
+# Python generated files.
+__pycache__/
+*.py[cod]
+
+# Local/editor files.
+.DS_Store
+.vscode/
+.idea/
