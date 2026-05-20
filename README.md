@@ -6,8 +6,6 @@ This repository contains the code for an ECE228 final project on automatic sleep
 2. **Pure Transformer ablation**
 3. **CNN-Transformer proposed model**
 
-The main research question is whether a CNN front-end improves Transformer-based EEG sleep staging by extracting local waveform features before temporal attention.
-
 ## Project Summary
 
 Sleep staging assigns each 30-second physiological recording segment to one of five sleep stages:
@@ -58,6 +56,12 @@ splits/
   train_subjects.txt
   eval_subjects.txt
   test_subjects.txt
+
+result/
+  loss_curves.png                       training/eval loss curves
+  test_accuracy_macro_f1.png            accuracy and macro-F1 comparison
+  test_per_class_f1.png                 per-class F1 comparison
+  test_metrics_combined.png             combined result figure
 ```
 
 ## Data Policy
