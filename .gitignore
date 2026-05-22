@@ -15,6 +15,7 @@ test_predictions.npz
 # Keep selected report plots in the public repository.
 !result/
 !result/*.png
+result/*.csv
 
 # Python generated files.
 __pycache__/

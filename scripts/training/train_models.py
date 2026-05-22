@@ -26,6 +26,12 @@ from src.sleep_dataset import LABEL_NAMES, SleepEpochDataset, inverse_frequency_
 
 
 MODEL_NAMES = ("cnn_lstm", "pure_transformer", "cnn_transformer")
+EXTRA_MODEL_NAMES = ("lstm_only",)
+CHANNEL_OPTIONS = {
+    "both": (0, 1),
+    "fpz_cz": (0,),
+    "pz_oz": (1,),
+}
 
 
 def set_seed(seed: int) -> None:
@@ -176,7 +182,12 @@ def train_one_model(
     model_dir = run_root / model_name
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    model = build_model(model_name, context_size=args.context_size).to(device)
+    model = build_model(
+        model_name,
+        context_size=args.context_size,
+        cnn_transformer_layers=args.cnn_transformer_layers,
+        in_channels=len(CHANNEL_OPTIONS[args.channels]),
+    ).to(device)
     params = count_parameters(model)
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -310,13 +321,25 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train sleep-stage classification models.")
     parser.add_argument("--index-csv", default=str(PROJECT_DIR / "dataset" / "processed" / "processed_index.csv"))
     parser.add_argument("--run-dir", default=str(PROJECT_DIR / "runs"))
-    parser.add_argument("--model", choices=(*MODEL_NAMES, "all"), default="all")
+    parser.add_argument("--model", choices=(*EXTRA_MODEL_NAMES, *MODEL_NAMES, "all"), default="all")
+    parser.add_argument(
+        "--channels",
+        choices=tuple(CHANNEL_OPTIONS),
+        default="both",
+        help="EEG channels used as model input: both, fpz_cz only, or pz_oz only.",
+    )
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--context-size", type=int, default=1, help="Odd number of consecutive epochs used as input context.")
+    parser.add_argument(
+        "--cnn-transformer-layers",
+        type=int,
+        default=2,
+        help="Number of Transformer encoder layers used only by the CNN-Transformer model.",
+    )
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=228)
     parser.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"))
@@ -348,9 +371,12 @@ def main() -> int:
     print(f"eval  X={eval_arrays.X.shape}, y={eval_arrays.y.shape}")
     print(f"test  X={test_arrays.X.shape}, y={test_arrays.y.shape}")
 
-    train_dataset = SleepEpochDataset(train_arrays, context_size=args.context_size)
-    eval_dataset = SleepEpochDataset(eval_arrays, context_size=args.context_size)
-    test_dataset = SleepEpochDataset(test_arrays, context_size=args.context_size)
+    channel_indices = CHANNEL_OPTIONS[args.channels]
+    print(f"channels: {args.channels} -> indices {channel_indices}")
+
+    train_dataset = SleepEpochDataset(train_arrays, context_size=args.context_size, channel_indices=channel_indices)
+    eval_dataset = SleepEpochDataset(eval_arrays, context_size=args.context_size, channel_indices=channel_indices)
+    test_dataset = SleepEpochDataset(test_arrays, context_size=args.context_size, channel_indices=channel_indices)
     class_weights = inverse_frequency_class_weights(train_arrays.y)
     print(f"class weights: {class_weights.numpy().round(4).tolist()} for {list(LABEL_NAMES)}")
 

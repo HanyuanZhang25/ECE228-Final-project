@@ -34,6 +34,70 @@ class ConvFeatureExtractor(nn.Module):
         return self.net(x_channels_first)
 
 
+class LSTMOnly(nn.Module):
+    """Ablation model: recurrent temporal modeling without CNN local features."""
+
+    def __init__(
+        self,
+        num_classes: int = 5,
+        in_channels: int = 2,
+        d_model: int = 96,
+        lstm_hidden: int = 48,
+        use_context: bool = False,
+    ):
+        super().__init__()
+        self.raw_pool = nn.AvgPool1d(kernel_size=30, stride=30)
+        self.lstm_input = nn.Linear(in_channels, d_model)
+        self.lstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=lstm_hidden,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+            dropout=0.1,
+        )
+
+        fused_dim = 2 * lstm_hidden
+        self.context_lstm = (
+            nn.LSTM(
+                input_size=fused_dim,
+                hidden_size=fused_dim // 2,
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True,
+            )
+            if use_context
+            else None
+        )
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(fused_dim),
+            nn.Linear(fused_dim, 128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes),
+        )
+
+    def encode_epoch(self, x: torch.Tensor) -> torch.Tensor:
+        x_cf = x.transpose(1, 2)
+        lstm_seq = self.raw_pool(x_cf).transpose(1, 2)
+        lstm_seq = self.lstm_input(lstm_seq)
+        _, (h_n, _) = self.lstm(lstm_seq)
+        return torch.cat([h_n[-2], h_n[-1]], dim=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 4:
+            if self.context_lstm is None:
+                raise ValueError("LSTMOnly was created without context support")
+            batch, context, time_steps, channels = x.shape
+            epoch_vec = self.encode_epoch(x.reshape(batch * context, time_steps, channels))
+            epoch_vec = epoch_vec.reshape(batch, context, -1)
+            _, (h_n, _) = self.context_lstm(epoch_vec)
+            fused = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            fused = self.encode_epoch(x)
+        return self.classifier(fused)
+
+
 class CNNLSTM(nn.Module):
     """
     CNN-LSTM baseline close to the cited paper's feature-fusion idea.
@@ -46,14 +110,21 @@ class CNNLSTM(nn.Module):
       - The two representations are concatenated before classification.
     """
 
-    def __init__(self, num_classes: int = 5, d_model: int = 96, lstm_hidden: int = 48, use_context: bool = False):
+    def __init__(
+        self,
+        num_classes: int = 5,
+        in_channels: int = 2,
+        d_model: int = 96,
+        lstm_hidden: int = 48,
+        use_context: bool = False,
+    ):
         super().__init__()
-        self.cnn = ConvFeatureExtractor(in_channels=2, out_channels=128)
+        self.cnn = ConvFeatureExtractor(in_channels=in_channels, out_channels=128)
         self.cnn_pool = nn.AdaptiveAvgPool1d(1)
         self.cnn_proj = nn.Linear(128, d_model)
 
         self.raw_pool = nn.AvgPool1d(kernel_size=30, stride=30)
-        self.lstm_input = nn.Linear(2, d_model)
+        self.lstm_input = nn.Linear(in_channels, d_model)
         self.lstm = nn.LSTM(
             input_size=d_model,
             hidden_size=lstm_hidden,
@@ -140,6 +211,7 @@ class PureTransformer(nn.Module):
     def __init__(
         self,
         num_classes: int = 5,
+        in_channels: int = 2,
         d_model: int = 96,
         num_heads: int = 4,
         num_layers: int = 2,
@@ -148,7 +220,7 @@ class PureTransformer(nn.Module):
     ):
         super().__init__()
         self.patch_size = patch_size
-        self.patch_embed = nn.Linear(patch_size * 2, d_model)
+        self.patch_embed = nn.Linear(patch_size * in_channels, d_model)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.pos = SinusoidalPositionalEncoding(d_model, max_len=1024)
         encoder_layer = nn.TransformerEncoderLayer(
@@ -197,13 +269,14 @@ class CNNTransformer(nn.Module):
     def __init__(
         self,
         num_classes: int = 5,
+        in_channels: int = 2,
         d_model: int = 96,
         num_heads: int = 4,
         num_layers: int = 2,
         dropout: float = 0.1,
     ):
         super().__init__()
-        self.cnn = ConvFeatureExtractor(in_channels=2, out_channels=128)
+        self.cnn = ConvFeatureExtractor(in_channels=in_channels, out_channels=128)
         self.proj = nn.Conv1d(128, d_model, kernel_size=1)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.pos = SinusoidalPositionalEncoding(d_model, max_len=512)
@@ -245,14 +318,21 @@ class CNNTransformer(nn.Module):
         return self.classifier(encoded[:, 0])
 
 
-def build_model(model_name: str, context_size: int = 1) -> nn.Module:
+def build_model(
+    model_name: str,
+    context_size: int = 1,
+    cnn_transformer_layers: int = 2,
+    in_channels: int = 2,
+) -> nn.Module:
     use_context = context_size > 1
+    if model_name == "lstm_only":
+        return LSTMOnly(in_channels=in_channels, use_context=use_context)
     if model_name == "cnn_lstm":
-        return CNNLSTM(use_context=use_context)
+        return CNNLSTM(in_channels=in_channels, use_context=use_context)
     if model_name == "pure_transformer":
-        return PureTransformer()
+        return PureTransformer(in_channels=in_channels)
     if model_name == "cnn_transformer":
-        return CNNTransformer()
+        return CNNTransformer(in_channels=in_channels, num_layers=cnn_transformer_layers)
     raise ValueError(f"Unknown model: {model_name}")
 
 

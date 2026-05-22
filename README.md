@@ -44,10 +44,11 @@ scripts/
 
   analysis/
     plot_results.py                    generate loss curves and metric bar plots
+    plot_ablation_results.py           generate ablation metric plots
 
 src/
   sleep_dataset.py                     PyTorch Dataset and split loading utilities
-  models.py                            CNN-LSTM, Pure Transformer, CNN-Transformer
+  models.py                            LSTM-only, CNN-LSTM, Pure Transformer, CNN-Transformer
   __init__.py
 
 splits/
@@ -62,6 +63,12 @@ result/
   test_accuracy_macro_f1.png            accuracy and macro-F1 comparison
   test_per_class_f1.png                 per-class F1 comparison
   test_metrics_combined.png             combined result figure
+  main_model_accuracy_macro_f1.png      main model accuracy and macro-F1
+  cnn_importance_accuracy_macro_f1.png  CNN importance ablation
+  cnn_importance_per_class_f1.png       CNN importance per-class F1
+  channel_ablation_accuracy_macro_f1.png EEG channel ablation
+  channel_ablation_per_class_f1.png     channel ablation per-class F1
+  depth_ablation_accuracy_macro_f1.png  Transformer depth ablation
 ```
 
 ## Data Policy
@@ -196,9 +203,23 @@ python scripts\training\train_models.py --model all --epochs 30 --batch-size 32 
 Train one model only:
 
 ```powershell
+python scripts\training\train_models.py --model lstm_only --epochs 30 --batch-size 64 --patience 5 --amp
 python scripts\training\train_models.py --model cnn_lstm --epochs 30 --batch-size 64 --patience 5 --amp
 python scripts\training\train_models.py --model pure_transformer --epochs 30 --batch-size 64 --patience 5 --amp
 python scripts\training\train_models.py --model cnn_transformer --epochs 30 --batch-size 64 --patience 5 --amp
+```
+
+Run channel ablations:
+
+```powershell
+python scripts\training\train_models.py --model cnn_transformer --channels fpz_cz --epochs 30 --batch-size 64 --patience 5 --amp
+python scripts\training\train_models.py --model cnn_transformer --channels pz_oz --epochs 30 --batch-size 64 --patience 5 --amp
+```
+
+Run a CNN-Transformer depth ablation:
+
+```powershell
+python scripts\training\train_models.py --model cnn_transformer --cnn-transformer-layers 3 --epochs 30 --batch-size 64 --patience 5 --amp
 ```
 
 Training logic:
@@ -252,6 +273,14 @@ test_metrics_combined.png    accuracy, macro-F1, and per-class F1 together
 test_metric_values.csv       plotted values as a table
 ```
 
+Generate ablation figures:
+
+```powershell
+python scripts\analysis\plot_ablation_results.py
+```
+
+The ablation plotting script writes figures to `result/`.
+
 ## Data Split
 
 The fixed split uses 21 distinct subjects:
@@ -269,6 +298,22 @@ No subject appears in more than one split.
 ```
 
 ## Models
+
+### LSTM-only
+
+The LSTM-only ablation removes the CNN branch:
+
+```text
+Raw EEG patches -> LSTM -> classifier
+```
+
+This tests whether recurrent temporal modeling alone can replace CNN-based local feature extraction.
+
+Approximate parameters:
+
+```text
+126K
+```
 
 ### CNN-LSTM
 

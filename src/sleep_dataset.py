@@ -54,11 +54,14 @@ def load_split_arrays(index_csv: Path, split: str) -> SplitArrays:
 
 
 class SleepEpochDataset(Dataset):
-    def __init__(self, arrays: SplitArrays, context_size: int = 1):
+    def __init__(self, arrays: SplitArrays, context_size: int = 1, channel_indices: tuple[int, ...] = (0, 1)):
         if context_size < 1 or context_size % 2 != 1:
             raise ValueError("context_size must be a positive odd integer")
+        if not channel_indices:
+            raise ValueError("At least one channel index is required")
         self.X = arrays.X
         self.y = arrays.y
+        self.channel_indices = channel_indices
         self.context_size = context_size
         self.window_indices = self._build_window_indices(arrays.recording_ids, context_size)
 
@@ -92,6 +95,7 @@ class SleepEpochDataset(Dataset):
             x_np = self.X[index]
         else:
             x_np = self.X[self.window_indices[index]]
+        x_np = x_np[..., self.channel_indices]
         x = torch.from_numpy(x_np)
         y = torch.tensor(self.y[index], dtype=torch.long)
         return x, y
