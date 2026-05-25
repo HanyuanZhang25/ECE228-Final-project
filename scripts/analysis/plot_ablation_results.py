@@ -31,6 +31,13 @@ def load_metrics(experiment: Experiment) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_history(experiment: Experiment) -> pd.DataFrame:
+    path = experiment.run_dir / experiment.model_dir / "history.csv"
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return pd.read_csv(path)
+
+
 def annotate_bars(ax, bars) -> None:
     for bar in bars:
         height = bar.get_height()
@@ -92,6 +99,56 @@ def plot_per_class_f1(experiments: list[Experiment], metrics: dict[str, dict], t
     plt.close(fig)
 
 
+def plot_combined_metrics(experiments: list[Experiment], metrics: dict[str, dict], title: str, out_path: Path) -> None:
+    metric_names = ("Accuracy", "Macro-F1", *LABEL_NAMES)
+    x = np.arange(len(metric_names))
+    width = min(0.8 / len(experiments), 0.20)
+    offsets = (np.arange(len(experiments)) - (len(experiments) - 1) / 2) * width
+
+    fig, ax = plt.subplots(figsize=(13.5, 5.6))
+    for offset, exp in zip(offsets, experiments):
+        values = [
+            metrics[exp.key]["accuracy"],
+            metrics[exp.key]["macro_f1"],
+            *[metrics[exp.key]["per_class"][label]["f1"] for label in LABEL_NAMES],
+        ]
+        ax.bar(x + offset, values, width, label=exp.label, color=exp.color)
+
+    ax.set_title(title)
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 1.0)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_names)
+    ax.grid(True, axis="y", alpha=0.25)
+    ax.legend(frameon=False, ncol=min(len(experiments), 4), loc="upper center", bbox_to_anchor=(0.5, -0.12))
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_loss_curves(experiments: list[Experiment], histories: dict[str, pd.DataFrame], title: str, out_path: Path) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(13.0, 5.0), sharey=False)
+
+    for exp in experiments:
+        history = histories[exp.key]
+        axes[0].plot(history["epoch"], history["train_loss"], marker="o", linewidth=2, color=exp.color, label=exp.label)
+        axes[1].plot(history["epoch"], history["eval_loss"], marker="o", linewidth=2, color=exp.color, label=exp.label)
+
+    axes[0].set_title("Training Loss")
+    axes[1].set_title("Evaluation Loss")
+    for ax in axes:
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Cross-Entropy Loss")
+        ax.grid(True, alpha=0.25)
+        ax.legend(frameon=False)
+
+    fig.suptitle(title, fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
 def write_values(experiments: list[Experiment], metrics: dict[str, dict], out_path: Path) -> None:
     rows = []
     for exp in experiments:
@@ -124,7 +181,7 @@ def default_experiments() -> dict[str, Experiment]:
         ),
         "cnn_transformer_both": Experiment(
             "cnn_transformer_both",
-            "CNN-Transformer\nBoth",
+            "CNN-Transformer",
             runs / "20260519_220130",
             "cnn_transformer",
             "#2f8f5b",
@@ -166,8 +223,10 @@ def main() -> int:
 
     experiments = default_experiments()
     metrics = {key: load_metrics(exp) for key, exp in experiments.items()}
+    histories = {key: load_history(exp) for key, exp in experiments.items()}
 
     main_models = [
+        experiments["lstm_only"],
         experiments["cnn_lstm"],
         experiments["pure_transformer"],
         experiments["cnn_transformer_both"],
@@ -188,6 +247,30 @@ def main() -> int:
         experiments["cnn_transformer_3l"],
     ]
 
+    plot_loss_curves(
+        main_models,
+        histories,
+        "Loss Curves Across Models",
+        out_dir / "loss_curves.png",
+    )
+    plot_accuracy_macro_f1(
+        main_models,
+        metrics,
+        "Test Accuracy and Macro-F1",
+        out_dir / "test_accuracy_macro_f1.png",
+    )
+    plot_per_class_f1(
+        main_models,
+        metrics,
+        "Test Per-Class F1",
+        out_dir / "test_per_class_f1.png",
+    )
+    plot_combined_metrics(
+        main_models,
+        metrics,
+        "Test Metrics Comparison",
+        out_dir / "test_metrics_combined.png",
+    )
     plot_accuracy_macro_f1(
         main_models,
         metrics,

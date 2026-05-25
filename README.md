@@ -188,7 +188,7 @@ Label IDs:
 
 ### Step 3: Train And Test Models
 
-Train and test all three models:
+Train and test the three main models:
 
 ```powershell
 python scripts\training\train_models.py --model all --epochs 30 --batch-size 64 --patience 5 --amp
@@ -266,9 +266,9 @@ python scripts\analysis\plot_results.py --run-dir runs\<timestamp>
 Generated figures:
 
 ```text
-loss_curves.png              training/eval loss curves for all three models
-test_accuracy_macro_f1.png   accuracy and macro-F1 comparison
-test_per_class_f1.png        per-class F1 comparison
+loss_curves.png              training/eval loss curves including LSTM-only
+test_accuracy_macro_f1.png   accuracy and macro-F1 comparison including LSTM-only
+test_per_class_f1.png        per-class F1 comparison including LSTM-only
 test_metrics_combined.png    accuracy, macro-F1, and per-class F1 together
 test_metric_values.csv       plotted values as a table
 ```
