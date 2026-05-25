@@ -262,13 +262,13 @@ def main() -> int:
     plot_per_class_f1(
         main_models,
         metrics,
-        "Test Per-Class F1",
+        "Test Per-Class F1 Including LSTM-only",
         out_dir / "test_per_class_f1.png",
     )
     plot_combined_metrics(
         main_models,
         metrics,
-        "Test Metrics Comparison",
+        "Test Metrics Comparison Including LSTM-only",
         out_dir / "test_metrics_combined.png",
     )
     plot_accuracy_macro_f1(
